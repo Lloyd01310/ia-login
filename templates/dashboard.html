@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="card">
+    <h1>Dashboard</h1>
+    <p class="sub">You’re signed in.</p>
+
+    {% for category, msg in get_flashed_messages(with_categories=true) %}
+      <div class="msg {{ category }}">{{ msg }}</div>
+    {% endfor %}
+
+    <p style="margin: 12px 0 0 0; color: var(--muted); font-size: 14px;">
+      Logged in as <span style="color: var(--text); font-weight: 600;">{{ email }}</span>
+    </p>
+
+    <a class="btn" href="/logout" style="margin-top: 16px;">Logout</a>
+  </div>
+</body>
+</html>

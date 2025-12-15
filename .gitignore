@@ -1,0 +1,18 @@
+# Secrets
+firebase-key.json
+
+# Virtual environment
+.venv/
+
+# Flask instance folder
+instance/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Mac system files
+.DS_Store
+
+# Old SQLite DB (no longer used)
+app.db

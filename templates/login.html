@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="card">
+    <h1>Login</h1>
+    <p class="sub">Sign in to continue.</p>
+
+    {% for category, msg in get_flashed_messages(with_categories=true) %}
+      <div class="msg {{ category }}">{{ msg }}</div>
+    {% endfor %}
+
+    <form method="post" id="loginForm" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required />
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+      <button type="submit">Login</button>
+    </form>
+
+    <p class="link">No account? <a href="/register">Register</a></p>
+  </div>
+
+  <script>
+    const form = document.getElementById("loginForm");
+    form.addEventListener("submit", (e) => {
+      const email = document.getElementById("email").value.trim();
+      const pw = document.getElementById("password").value;
+
+      if (!email || !email.includes("@") || !email.includes(".")) {
+        alert("Please enter a valid email address.");
+        e.preventDefault(); return;
+      }
+      if (!pw) {
+        alert("Please enter your password.");
+        e.preventDefault(); return;
+      }
+    });
+  </script>
+</body>
+</html>
