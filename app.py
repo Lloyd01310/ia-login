@@ -14,19 +14,20 @@ from firebase_admin import credentials, firestore
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from email_validator import validate_email, EmailNotValidError
 
+from flask import session, redirect, url_for
+
+from flask import Response
+
+import csv, io
+import datetime as dt
+
 import socket
 
 
-# -----------------------
-# App + Secrets
-# -----------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-this")
 
 
-# -----------------------
-# Firebase / Firestore
-# -----------------------
 cred = credentials.Certificate("firebase-key.json")
 firebase_admin.initialize_app(cred)
 fs = firestore.client()
@@ -34,17 +35,11 @@ fs = firestore.client()
 serializer = URLSafeTimedSerializer(app.secret_key)
 
 
-# -----------------------
-# Login manager
-# -----------------------
 login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
 
-# -----------------------
-# Helpers
-# -----------------------
 class SimpleUser(UserMixin):
     def __init__(self, email: str):
         self.id = email
@@ -133,6 +128,52 @@ def create_user(email: str, password_hash: str):
 def mark_user_verified(email: str):
     update_user_fields(email, {"verified": True})
 
+def infer_type(value):
+    if value is None:
+        return "Null"
+    if isinstance(value, bool):
+        return "Boolean"
+    if isinstance(value, int):
+        return "Integer"
+    if isinstance(value, float):
+        return "Float"
+    if isinstance(value, str):
+        return "String"
+    if isinstance(value, list):
+        return "Array"
+    if isinstance(value, dict):
+        return "Map"
+    if isinstance(value, dt.datetime):
+        return "Timestamp"
+    return type(value).__name__
+
+
+def generate_data_dictionary(db, sample_docs_per_collection=3):
+    """
+    Scans each top-level collection and infers field names + types.
+    sample_docs_per_collection: increases accuracy if documents vary.
+    """
+    schema = {}
+
+    for col in db.collections():
+        col_name = col.id
+        schema[col_name] = {}
+
+        docs = list(col.limit(sample_docs_per_collection).stream())
+        if not docs:
+            continue
+
+        for doc in docs:
+            data = doc.to_dict() or {}
+            for field, value in data.items():
+                dtype = infer_type(value)
+                existing = schema[col_name].get(field)
+                if existing and existing != dtype:
+                    schema[col_name][field] = f"{existing} | {dtype}"
+                else:
+                    schema[col_name][field] = dtype
+
+    return schema
 
 def send_verification_email(to_email: str):
     smtp_host = os.environ.get("SMTP_HOST", "")
@@ -140,13 +181,25 @@ def send_verification_email(to_email: str):
     smtp_user = os.environ.get("SMTP_USER", "")
     smtp_pass = os.environ.get("SMTP_PASS", "")
     from_email = os.environ.get("FROM_EMAIL", smtp_user)
-    base_url = os.environ.get("BASE_URL", "http://127.0.0.1:5001")
 
-    if not smtp_host or not smtp_user or not smtp_pass:
-        raise RuntimeError("Email sending is not configured. (Missing SMTP env vars.)")
+    base_url = os.environ.get("BASE_URL", "http://127.0.0.1:5001")
 
     token = serializer.dumps(to_email, salt="email-verify")
     link = f"{base_url}/verify-email?token={token}"
+
+    # -------------------------
+    # DEV / SCHOOL MODE
+    # -------------------------
+    if os.environ.get("DEV_MODE") == "1":
+        print("\n" + "=" * 60)
+        print("[DEV MODE] Email sending disabled")
+        print("Verification link:")
+        print(link)
+        print("=" * 60 + "\n")
+        return
+
+    if not smtp_host or not smtp_user or not smtp_pass:
+        raise RuntimeError("SMTP env vars missing.")
 
     msg = EmailMessage()
     msg["Subject"] = "Verify your email"
@@ -191,7 +244,7 @@ def lockout_remaining(user_data: dict) -> timedelta | None:
     if attempts < 3 or not last_failed:
         return None
 
-    # Firestore timestamps often come as datetime; ensure tz-aware
+
     if isinstance(last_failed, datetime) and last_failed.tzinfo is None:
         last_failed = last_failed.replace(tzinfo=timezone.utc)
 
@@ -220,6 +273,30 @@ def load_user(user_id):
 @app.route("/")
 def home():
     return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/data-dictionary.csv")
+def data_dictionary_csv():
+    admin_email = "goyal.arav@gmail.com"
+    if session.get("email") != admin_email:
+         return "Forbidden", 403
+
+    schema = generate_data_dictionary(fs)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Collection", "Field", "Type"])
+
+    for col, fields in schema.items():
+        for field, dtype in sorted(fields.items()):
+            writer.writerow([col, field, dtype])
+
+    csv_data = output.getvalue()
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=data_dictionary.csv"}
+    )
 
 
 @app.route("/register", methods=["GET", "POST"])
