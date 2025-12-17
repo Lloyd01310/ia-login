@@ -14,6 +14,8 @@ from firebase_admin import credentials, firestore
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from email_validator import validate_email, EmailNotValidError
 
+import socket
+
 
 # -----------------------
 # App + Secrets
@@ -158,17 +160,24 @@ def send_verification_email(to_email: str):
     )
 
     try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
 
+    except socket.timeout:
+        raise RuntimeError("Email server timed out. Try again in a minute (or use resend).")
+    except OSError:
+        raise RuntimeError("Could not connect to the email server from Render. SMTP may be blocked.")
     except smtplib.SMTPRecipientsRefused:
-        raise RuntimeError("That email address could not receive mail. Please check for typos (e.g. gmail.com).")
+        raise RuntimeError("That email address could not receive mail. Check for typos.")
     except smtplib.SMTPAuthenticationError:
-        raise RuntimeError("Email sender authentication failed. Use an App Password and re-check SMTP_USER/SMTP_PASS.")
+        raise RuntimeError("Email sender authentication failed. Re-check SMTP_USER/SMTP_PASS (use an App Password).")
     except smtplib.SMTPException:
         raise RuntimeError("Verification email could not be sent right now. Please try again.")
+
 
 
 def lockout_remaining(user_data: dict) -> timedelta | None:
